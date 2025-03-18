@@ -56,6 +56,7 @@ async def shorten_link(
         logger.error(f"Error creating link: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @router.get("/{short_code}")
 async def redirect_link(short_code: str):
     """
