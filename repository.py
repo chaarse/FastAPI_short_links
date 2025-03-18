@@ -1,3 +1,5 @@
+import secrets
+import string
 from sqlalchemy import select, update, delete
 from database import new_session, LinkOrm
 from schemas import SLinkAdd, SLinkResponse
@@ -8,21 +10,48 @@ import logging
 logger = logging.getLogger(__name__)
 
 class LinkRepository:
+    @staticmethod
+    def generate_short_code(length: int = 8) -> str:
+        """
+        Генерирует уникальный короткий код.
+        """
+        chars = string.ascii_letters + string.digits  # Буквы и цифры
+        return ''.join(secrets.choice(chars) for _ in range(length))
+
     @classmethod
-    async def add_one(cls, data: SLinkAdd, user_id: Optional[int] = None) -> int:
+    async def add_one(cls, data: SLinkAdd, user_id: Optional[int] = None) -> SLinkResponse:
         """
         Добавляет новую ссылку в базу данных.
         """
         async with new_session() as session:
             try:
-                link_dict = data.model_dump()
-                link_dict["user_id"] = user_id
-                link = LinkOrm(**link_dict)
+                # Генерируем уникальный short_code
+                while True:
+                    short_code = cls.generate_short_code()
+                    existing_link = await cls.find_by_short_code(short_code)
+                    if not existing_link:
+                        break
+
+                # Создаем новую ссылку
+                link = LinkOrm(
+                    original_url=str(data.original_url),
+                    short_code=short_code,
+                    user_id=user_id,  # user_id может быть None (анонимный пользователь)
+                )
                 session.add(link)
                 await session.flush()
                 await session.commit()
+
                 logger.debug(f"Link created: {link}")
-                return link.id
+                return SLinkResponse(
+                    id=link.id,
+                    original_url=link.original_url,
+                    short_code=link.short_code,
+                    created_at=link.created_at,
+                    expires_at=link.expires_at,
+                    user_id=link.user_id,
+                    click_count=link.click_count,
+                )
             except Exception as e:
                 logger.error(f"Error adding link: {e}")
                 await session.rollback()
@@ -61,16 +90,21 @@ class LinkRepository:
             await session.commit()
 
     @classmethod
-    async def update_original_url(cls, short_code: str, new_url: str, user_id: int):
+    async def update_original_url(cls, short_code: str, new_url: str, user_id: int) -> LinkOrm:
         """
-        Обновляет оригинальный URL для ссылки.
+        Обновляет оригинальный URL для ссылки и возвращает обновленную запись.
         """
         async with new_session() as session:
+            # Обновляем оригинальный URL
             query = update(LinkOrm).where(
                 (LinkOrm.short_code == short_code) & (LinkOrm.user_id == user_id)
             ).values(original_url=new_url)
             await session.execute(query)
             await session.commit()
+
+            # Получаем обновленную запись
+            updated_link = await cls.find_by_short_code(short_code)
+            return updated_link
 
     @classmethod
     async def increment_click_count(cls, link_id: int):

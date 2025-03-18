@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi.security import OAuth2PasswordBearer
 from database import new_session, UserOrm
 from schemas import UserRegister, UserLogin, UserResponse
 from passlib.context import CryptContext
@@ -32,7 +32,6 @@ def generate_user_secret_key(username: str) -> str:
     """
     Генерирует уникальный SECRET_KEY для пользователя на основе его username и соли.
     """
-    # Создаем хэш от username и соли
     secret_key = hashlib.sha256(f"{username}{SALT}".encode()).hexdigest()
     return secret_key
 
@@ -133,18 +132,25 @@ class AuthService:
 
 # Эндпоинты для аутентификации
 @auth_router.post("/register")
-async def register(user_data: UserRegister):
+async def register(
+    username: str = Form(...),  # Ввод через форму
+    password: str = Form(...),  # Ввод через форму
+):
     """
     Регистрирует нового пользователя.
     """
+    user_data = UserRegister(username=username, password=password)
     return await AuthService.register_user(user_data)
 
 @auth_router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(
+    username: str = Form(...),  # Ввод через форму
+    password: str = Form(...),  # Ввод через форму
+):
     """
     Аутентифицирует пользователя и возвращает токен.
     """
-    user = await AuthService.authenticate_user(form_data.username, form_data.password)
+    user = await AuthService.authenticate_user(username, password)
     access_token = AuthService.create_access_token(user)
     return {"access_token": access_token, "token_type": "bearer"}
 

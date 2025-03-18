@@ -20,11 +20,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Подключаем роутеры
 app.include_router(links_router)
 app.include_router(auth_router)
 
-# Настройка OpenAPI для Swagger UI
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -34,7 +32,6 @@ def custom_openapi():
         description="API для сокращения ссылок",
         routes=app.routes,
     )
-    # Добавляем поддержку авторизации через Bearer Token
     openapi_schema["components"]["securitySchemes"] = {
         "BearerAuth": {
             "type": "http",
