@@ -4,6 +4,7 @@ from repository import LinkRepository
 from schemas import SLinkAdd, SLinkResponse, UserResponse, SLinkStatsResponse
 from auth import get_current_user
 from typing import Optional
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,12 +20,13 @@ router = APIRouter(
 async def shorten_link(
     request: Request,
     original_url: str = Form(...),
-    custom_alias: Optional[str] = Form(None),  # Необязательный параметр
+    custom_alias: Optional[str] = Form(None),
+    expires_at: Optional[datetime] = Form(None),  # Необязательный параметр
     user: Optional[UserResponse] = Depends(get_current_user),
 ) -> SLinkResponse:
     """
     Создает короткую ссылку для оригинального URL.
-    Поддерживает использование custom_alias в качестве short_code.
+    Поддерживает использование custom_alias и expires_at.
     """
     try:
         # Проверяем, существует ли ссылка с таким original_url
@@ -43,7 +45,7 @@ async def shorten_link(
 
         # Если пользователь авторизован, используем его user_id, иначе None
         user_id = user.id if user else None
-        link_data = SLinkAdd(original_url=original_url, custom_alias=custom_alias)
+        link_data = SLinkAdd(original_url=original_url, custom_alias=custom_alias, expires_at=expires_at)
         link = await LinkRepository.add_one(link_data, user_id=user_id)
         return SLinkResponse(
             id=link.id,
@@ -74,6 +76,7 @@ async def redirect_link(short_code: str):
     await LinkRepository.increment_click_count(link.id)
     return RedirectResponse(url=link.original_url)
 
+
 @router.delete("/{short_code}")
 async def delete_link(
     short_code: str,
@@ -92,6 +95,7 @@ async def delete_link(
 
     await LinkRepository.delete_by_short_code(short_code, user.id)
     return {"ok": True}
+
 
 @router.put("/{short_code}", response_model=SLinkResponse)
 async def update_link(

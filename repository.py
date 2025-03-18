@@ -6,6 +6,7 @@ from database import new_session, LinkOrm
 from schemas import SLinkAdd, SLinkResponse
 from datetime import datetime, timedelta
 from typing import Optional
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,11 +20,13 @@ class LinkRepository:
         chars = string.ascii_letters + string.digits  # Буквы и цифры
         return ''.join(secrets.choice(chars) for _ in range(length))
 
+    from datetime import datetime, timedelta
+
     @classmethod
     async def add_one(cls, data: SLinkAdd, user_id: Optional[int] = None) -> SLinkResponse:
         """
         Добавляет новую ссылку в базу данных.
-        Поддерживает использование custom_alias в качестве short_code.
+        Поддерживает использование custom_alias и expires_at.
         """
         async with new_session() as session:
             try:
@@ -44,11 +47,15 @@ class LinkRepository:
                         if not existing_link:
                             break
 
+                # Устанавливаем expires_at (по умолчанию 30 дней с текущего момента)
+                expires_at = data.expires_at if data.expires_at else datetime.utcnow() + timedelta(days=30)
+
                 # Создаем новую ссылку
                 link = LinkOrm(
                     original_url=str(data.original_url),
                     short_code=short_code,
                     user_id=user_id,  # user_id может быть None (анонимный пользователь)
+                    expires_at=expires_at,  # Устанавливаем срок действия
                 )
                 session.add(link)
                 await session.flush()
@@ -139,3 +146,22 @@ class LinkRepository:
             query = update(LinkOrm).where(LinkOrm.id == link_id).values(click_count=LinkOrm.click_count + 1)
             await session.execute(query)
             await session.commit()
+
+async def delete_expired_links():
+    """
+    Фоновая задача для удаления истекших ссылок.
+    """
+    while True:
+        async with new_session() as session:
+            try:
+                # Удаляем ссылки, у которых expires_at меньше текущего времени
+                query = delete(LinkOrm).where(LinkOrm.expires_at < datetime.utcnow())
+                await session.execute(query)
+                await session.commit()
+                logger.info("Expired links deleted")
+            except Exception as e:
+                logger.error(f"Error deleting expired links: {e}")
+                await session.rollback()
+
+        # Проверяем каждые 30 минут
+        await asyncio.sleep(1800)
