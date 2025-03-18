@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, Request, Body
 from fastapi.responses import RedirectResponse
 from repository import LinkRepository
-from schemas import SLinkAdd, SLinkResponse, UserResponse
+from schemas import SLinkAdd, SLinkResponse, UserResponse, SLinkStatsResponse
 from auth import get_current_user
 from typing import Optional
 import logging
@@ -132,8 +132,9 @@ async def update_link(
         logger.error(f"Error updating link: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-@router.get("/{short_code}/stats", response_model=SLinkResponse)
-async def link_stats(short_code: str) -> SLinkResponse:
+
+@router.get("/{short_code}/stats", response_model=SLinkStatsResponse)
+async def link_stats(short_code: str) -> SLinkStatsResponse:
     """
     Возвращает статистику по короткой ссылке.
     Доступно всем.
@@ -141,4 +142,10 @@ async def link_stats(short_code: str) -> SLinkResponse:
     link = await LinkRepository.find_by_short_code(short_code)
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
-    return link
+
+    return SLinkStatsResponse(
+        original_url=link.original_url,
+        created_at=link.created_at,
+        click_count=link.click_count,
+        last_used_at=link.last_used_at,  # Предполагаем, что это поле есть в модели
+    )

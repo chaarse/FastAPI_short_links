@@ -32,3 +32,9 @@ class SLinkResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class SLinkStatsResponse(BaseModel):
+    original_url: HttpUrl  # Оригинальный URL
+    created_at: datetime   # Дата создания
+    click_count: int       # Количество переходов
+    last_used_at: datetime
