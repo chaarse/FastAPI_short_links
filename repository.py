@@ -1,5 +1,6 @@
 import secrets
 import string
+from fastapi import HTTPException
 from sqlalchemy import select, update, delete
 from database import new_session, LinkOrm
 from schemas import SLinkAdd, SLinkResponse
@@ -22,15 +23,26 @@ class LinkRepository:
     async def add_one(cls, data: SLinkAdd, user_id: Optional[int] = None) -> SLinkResponse:
         """
         Добавляет новую ссылку в базу данных.
+        Поддерживает использование custom_alias в качестве short_code.
         """
         async with new_session() as session:
             try:
-                # Генерируем уникальный short_code
-                while True:
-                    short_code = cls.generate_short_code()
-                    existing_link = await cls.find_by_short_code(short_code)
-                    if not existing_link:
-                        break
+                # Если передан custom_alias, проверяем его уникальность
+                if data.custom_alias:
+                    existing_link = await cls.find_by_short_code(data.custom_alias)
+                    if existing_link:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Пользовательский алиас уже занят."
+                        )
+                    short_code = data.custom_alias
+                else:
+                    # Генерируем уникальный short_code, если custom_alias не передан
+                    while True:
+                        short_code = cls.generate_short_code()
+                        existing_link = await cls.find_by_short_code(short_code)
+                        if not existing_link:
+                            break
 
                 # Создаем новую ссылку
                 link = LinkOrm(
@@ -51,11 +63,14 @@ class LinkRepository:
                     expires_at=link.expires_at,
                     user_id=link.user_id,
                     click_count=link.click_count,
+                    short_url=None,  # Поле short_url не используется в этой ручке
                 )
+            except HTTPException as e:
+                raise e  # Пробрасываем HTTPException
             except Exception as e:
                 logger.error(f"Error adding link: {e}")
                 await session.rollback()
-                raise
+                raise HTTPException(status_code=500, detail="Internal Server Error")
 
     @classmethod
     async def find_by_short_code(cls, short_code: str) -> LinkOrm:

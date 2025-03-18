@@ -18,7 +18,14 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 class SLinkAdd(BaseModel):
-    original_url: HttpUrl  # Только оригинальная ссылка
+    original_url: HttpUrl  # Оригинальный URL
+    custom_alias: Optional[str] = Field(
+        None,  # По умолчанию None
+        min_length=4,  # Минимальная длина custom_alias
+        max_length=20,  # Максимальная длина custom_alias
+        pattern="^[a-zA-Z0-9_-]+$",  # Разрешенные символы: буквы, цифры, _, -
+        description="Пользовательский алиас для короткой ссылки. Должен быть уникальным."
+    )
 
 class SLinkResponse(BaseModel):
     id: int

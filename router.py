@@ -17,12 +17,14 @@ router = APIRouter(
 
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
-    request: Request,  # Добавляем request для получения базового URL
+    request: Request,
     original_url: str = Form(...),
+    custom_alias: Optional[str] = Form(None),  # Необязательный параметр
     user: Optional[UserResponse] = Depends(get_current_user),
 ) -> SLinkResponse:
     """
     Создает короткую ссылку для оригинального URL.
+    Поддерживает использование custom_alias в качестве short_code.
     """
     try:
         # Проверяем, существует ли ссылка с таким original_url
@@ -36,12 +38,12 @@ async def shorten_link(
                 expires_at=existing_link.expires_at,
                 user_id=existing_link.user_id,
                 click_count=existing_link.click_count,
-                short_url=f"{request.base_url}links/{existing_link.short_code}",  # Добавляем короткую ссылку
+                short_url=f"{request.base_url}links/{existing_link.short_code}",
             )
 
         # Если пользователь авторизован, используем его user_id, иначе None
         user_id = user.id if user else None
-        link_data = SLinkAdd(original_url=original_url)
+        link_data = SLinkAdd(original_url=original_url, custom_alias=custom_alias)
         link = await LinkRepository.add_one(link_data, user_id=user_id)
         return SLinkResponse(
             id=link.id,
@@ -51,8 +53,10 @@ async def shorten_link(
             expires_at=link.expires_at,
             user_id=link.user_id,
             click_count=link.click_count,
-            short_url=f"{request.base_url}links/{link.short_code}",  # Добавляем короткую ссылку
+            short_url=f"{request.base_url}links/{link.short_code}",
         )
+    except HTTPException as e:
+        raise e  # Пробрасываем HTTPException
     except Exception as e:
         logger.error(f"Error creating link: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
