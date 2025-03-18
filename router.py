@@ -15,7 +15,7 @@ router = APIRouter(
 
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
-    original_url: str = Form(...),  # Ввод через форму
+    original_url: str = Form(..., description="Оригинальный URL", example="https://example.com/"),
     user: Optional[UserResponse] = Depends(get_current_user),  # Опциональная авторизация
 ) -> SLinkResponse:
     """
