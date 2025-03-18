@@ -14,6 +14,7 @@ router = APIRouter(
 )
 
 
+
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
     request: Request,  # Добавляем request для получения базового URL
@@ -98,30 +99,38 @@ async def update_link(
     Обновляет оригинальный URL для короткой ссылки.
     Доступно только авторизованным пользователям, которые создали ссылку.
     """
-    link = await LinkRepository.find_by_short_code(short_code)
-    if not link:
-        raise HTTPException(status_code=404, detail="Ссылка не найдена")
+    try:
+        logger.debug(f"Updating link: short_code={short_code}, new_url={new_url}, user_id={user.id}")
 
-    if link.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Недостаточно прав для обновления ссылки")
+        link = await LinkRepository.find_by_short_code(short_code)
+        if not link:
+            logger.warning(f"Link not found: short_code={short_code}")
+            raise HTTPException(status_code=404, detail="Ссылка не найдена")
 
-    # Обновляем оригинальный URL
-    await LinkRepository.update_original_url(short_code, new_url, user.id)
+        if link.user_id != user.id:
+            logger.warning(f"Permission denied: user_id={user.id}, link_user_id={link.user_id}")
+            raise HTTPException(status_code=403, detail="Недостаточно прав для обновления ссылки")
 
-    # Получаем обновленную ссылку
-    updated_link = await LinkRepository.find_by_short_code(short_code)
-    if not updated_link:
-        raise HTTPException(status_code=500, detail="Ошибка при обновлении ссылки")
+        # Обновляем оригинальный URL
+        updated_link = await LinkRepository.update_original_url(short_code, new_url, user.id)
+        if not updated_link:
+            logger.error(f"Failed to update link: short_code={short_code}")
+            raise HTTPException(status_code=500, detail="Ошибка при обновлении ссылки")
 
-    return SLinkResponse(
-        id=updated_link.id,
-        original_url=updated_link.original_url,
-        short_code=updated_link.short_code,
-        created_at=updated_link.created_at,
-        expires_at=updated_link.expires_at,
-        user_id=updated_link.user_id,
-        click_count=updated_link.click_count,
-    )
+        logger.info(f"Link updated: short_code={short_code}, new_url={new_url}")
+        return SLinkResponse(
+            id=updated_link.id,
+            original_url=updated_link.original_url,
+            short_code=updated_link.short_code,
+            created_at=updated_link.created_at,
+            expires_at=updated_link.expires_at,
+            user_id=updated_link.user_id,
+            click_count=updated_link.click_count,
+            short_url=None,  # Поле short_url не используется в этой ручке
+        )
+    except Exception as e:
+        logger.error(f"Error updating link: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.get("/{short_code}/stats", response_model=SLinkResponse)
 async def link_stats(short_code: str) -> SLinkResponse:

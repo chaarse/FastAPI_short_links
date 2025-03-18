@@ -28,7 +28,7 @@ class SLinkResponse(BaseModel):
     expires_at: datetime
     user_id: Optional[int]
     click_count: int
-    short_url: str  # Добавляем короткую ссылку
+    short_url: Optional[str]  # Делаем поле опциональным
 
     class Config:
         from_attributes = True
