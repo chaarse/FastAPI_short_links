@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Request
+from fastapi.responses import RedirectResponse
 from repository import LinkRepository
 from schemas import SLinkAdd, SLinkResponse, UserResponse
 from auth import get_current_user
@@ -15,12 +16,12 @@ router = APIRouter(
 
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
-    original_url: str = Form(..., description="Оригинальный URL", example="https://example.com/"),
-    user: Optional[UserResponse] = Depends(get_current_user),  # Опциональная авторизация
+    request: Request,  # Добавляем request для получения базового URL
+    original_url: str = Form(...),
+    user: Optional[UserResponse] = Depends(get_current_user),
 ) -> SLinkResponse:
     """
     Создает короткую ссылку для оригинального URL.
-    Доступно всем (авторизованным и анонимным).
     """
     try:
         # Проверяем, существует ли ссылка с таким original_url
@@ -34,13 +35,23 @@ async def shorten_link(
                 expires_at=existing_link.expires_at,
                 user_id=existing_link.user_id,
                 click_count=existing_link.click_count,
+                short_url=f"{request.base_url}links/{existing_link.short_code}",  # Добавляем короткую ссылку
             )
 
         # Если пользователь авторизован, используем его user_id, иначе None
         user_id = user.id if user else None
         link_data = SLinkAdd(original_url=original_url)
         link = await LinkRepository.add_one(link_data, user_id=user_id)
-        return link
+        return SLinkResponse(
+            id=link.id,
+            original_url=link.original_url,
+            short_code=link.short_code,
+            created_at=link.created_at,
+            expires_at=link.expires_at,
+            user_id=link.user_id,
+            click_count=link.click_count,
+            short_url=f"{request.base_url}links/{link.short_code}",  # Добавляем короткую ссылку
+        )
     except Exception as e:
         logger.error(f"Error creating link: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -49,14 +60,13 @@ async def shorten_link(
 async def redirect_link(short_code: str):
     """
     Перенаправляет на оригинальный URL по короткой ссылке.
-    Доступно всем.
     """
     link = await LinkRepository.find_by_short_code(short_code)
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
 
     await LinkRepository.increment_click_count(link.id)
-    return {"url": link.original_url}
+    return RedirectResponse(url=link.original_url)
 
 @router.delete("/{short_code}")
 async def delete_link(
