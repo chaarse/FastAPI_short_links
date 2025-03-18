@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, Form, Request, Body
 from fastapi.responses import RedirectResponse
 from repository import LinkRepository
 from schemas import SLinkAdd, SLinkResponse, UserResponse
@@ -88,12 +88,12 @@ async def delete_link(
     await LinkRepository.delete_by_short_code(short_code, user.id)
     return {"ok": True}
 
-@router.put("/{short_code}")
+@router.put("/{short_code}", response_model=SLinkResponse)
 async def update_link(
-    short_code: str,
-    new_url: str,
-    user: UserResponse = Depends(get_current_user),  # Только авторизованные пользователи
-):
+    short_code: str,  # short_code берется из URL
+    new_url: str = Form(...),  # new_url берется из формы (x-www-form-urlencoded)
+    user: UserResponse = Depends(get_current_user),
+) -> SLinkResponse:
     """
     Обновляет оригинальный URL для короткой ссылки.
     Доступно только авторизованным пользователям, которые создали ссылку.
@@ -105,8 +105,23 @@ async def update_link(
     if link.user_id != user.id:
         raise HTTPException(status_code=403, detail="Недостаточно прав для обновления ссылки")
 
+    # Обновляем оригинальный URL
     await LinkRepository.update_original_url(short_code, new_url, user.id)
-    return {"ok": True}
+
+    # Получаем обновленную ссылку
+    updated_link = await LinkRepository.find_by_short_code(short_code)
+    if not updated_link:
+        raise HTTPException(status_code=500, detail="Ошибка при обновлении ссылки")
+
+    return SLinkResponse(
+        id=updated_link.id,
+        original_url=updated_link.original_url,
+        short_code=updated_link.short_code,
+        created_at=updated_link.created_at,
+        expires_at=updated_link.expires_at,
+        user_id=updated_link.user_id,
+        click_count=updated_link.click_count,
+    )
 
 @router.get("/{short_code}/stats", response_model=SLinkResponse)
 async def link_stats(short_code: str) -> SLinkResponse:

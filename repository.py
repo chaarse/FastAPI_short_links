@@ -90,16 +90,21 @@ class LinkRepository:
             await session.commit()
 
     @classmethod
-    async def update_original_url(cls, short_code: str, new_url: str, user_id: int):
+    async def update_original_url(cls, short_code: str, new_url: str, user_id: int) -> LinkOrm:
         """
-        Обновляет оригинальный URL для ссылки.
+        Обновляет оригинальный URL для ссылки и возвращает обновленную запись.
         """
         async with new_session() as session:
+            # Обновляем оригинальный URL
             query = update(LinkOrm).where(
                 (LinkOrm.short_code == short_code) & (LinkOrm.user_id == user_id)
             ).values(original_url=new_url)
             await session.execute(query)
             await session.commit()
+
+            # Получаем обновленную запись
+            updated_link = await cls.find_by_short_code(short_code)
+            return updated_link
 
     @classmethod
     async def increment_click_count(cls, link_id: int):
