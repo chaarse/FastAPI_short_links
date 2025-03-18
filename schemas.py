@@ -18,8 +18,7 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 class SLinkAdd(BaseModel):
-    original_url: HttpUrl
-    short_code: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_-]+$")
+    original_url: HttpUrl  # Только оригинальная ссылка
 
 class SLinkResponse(BaseModel):
     id: int
@@ -27,7 +26,7 @@ class SLinkResponse(BaseModel):
     short_code: str
     created_at: datetime
     expires_at: datetime
-    user_id: Optional[int]
+    user_id: Optional[int]  # ID пользователя (если авторизован) или None (если аноним)
     click_count: int
 
     class Config:

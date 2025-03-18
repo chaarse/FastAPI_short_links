@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from repository import LinkRepository
 from schemas import SLinkAdd, SLinkResponse, UserResponse
 from auth import get_current_user
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,11 +15,29 @@ router = APIRouter(
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
     link_data: SLinkAdd,
-    user: UserResponse = Depends(get_current_user),
+    user: Optional[UserResponse] = Depends(get_current_user),  # Опциональная авторизация
 ) -> SLinkResponse:
+    """
+    Создает короткую ссылку для оригинального URL.
+    Доступно всем (авторизованным и анонимным).
+    """
     try:
-        link_id = await LinkRepository.add_one(link_data, user.id)
-        link = await LinkRepository.find_by_short_code(link_data.short_code)
+        # Проверяем, существует ли ссылка с таким original_url
+        existing_link = await LinkRepository.find_by_original_url(str(link_data.original_url))
+        if existing_link:
+            return SLinkResponse(
+                id=existing_link.id,
+                original_url=existing_link.original_url,
+                short_code=existing_link.short_code,
+                created_at=existing_link.created_at,
+                expires_at=existing_link.expires_at,
+                user_id=existing_link.user_id,
+                click_count=existing_link.click_count,
+            )
+
+        # Если пользователь авторизован, используем его user_id, иначе None
+        user_id = user.id if user else None
+        link = await LinkRepository.add_one(link_data, user_id=user_id)
         return link
     except Exception as e:
         logger.error(f"Error creating link: {e}")
@@ -26,6 +45,10 @@ async def shorten_link(
 
 @router.get("/{short_code}")
 async def redirect_link(short_code: str):
+    """
+    Перенаправляет на оригинальный URL по короткой ссылке.
+    Доступно всем.
+    """
     link = await LinkRepository.find_by_short_code(short_code)
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
@@ -36,8 +59,19 @@ async def redirect_link(short_code: str):
 @router.delete("/{short_code}")
 async def delete_link(
     short_code: str,
-    user: UserResponse = Depends(get_current_user),
+    user: UserResponse = Depends(get_current_user),  # Только авторизованные пользователи
 ):
+    """
+    Удаляет короткую ссылку.
+    Доступно только авторизованным пользователям, которые создали ссылку.
+    """
+    link = await LinkRepository.find_by_short_code(short_code)
+    if not link:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена")
+
+    if link.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для удаления ссылки")
+
     await LinkRepository.delete_by_short_code(short_code, user.id)
     return {"ok": True}
 
@@ -45,21 +79,29 @@ async def delete_link(
 async def update_link(
     short_code: str,
     new_url: str,
-    user: UserResponse = Depends(get_current_user),
+    user: UserResponse = Depends(get_current_user),  # Только авторизованные пользователи
 ):
+    """
+    Обновляет оригинальный URL для короткой ссылки.
+    Доступно только авторизованным пользователям, которые создали ссылку.
+    """
+    link = await LinkRepository.find_by_short_code(short_code)
+    if not link:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена")
+
+    if link.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для обновления ссылки")
+
     await LinkRepository.update_original_url(short_code, new_url, user.id)
     return {"ok": True}
 
 @router.get("/{short_code}/stats", response_model=SLinkResponse)
 async def link_stats(short_code: str) -> SLinkResponse:
+    """
+    Возвращает статистику по короткой ссылке.
+    Доступно всем.
+    """
     link = await LinkRepository.find_by_short_code(short_code)
-    if not link:
-        raise HTTPException(status_code=404, detail="Ссылка не найдена")
-    return link
-
-@router.get("/search", response_model=SLinkResponse)
-async def search_link_by_url(original_url: str):
-    link = await LinkRepository.find_by_original_url(original_url)
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
     return link
