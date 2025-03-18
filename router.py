@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form
 from repository import LinkRepository
 from schemas import SLinkAdd, SLinkResponse, UserResponse
 from auth import get_current_user
@@ -12,9 +12,10 @@ router = APIRouter(
     tags=["Ссылки"],
 )
 
+
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
-    link_data: SLinkAdd,
+    original_url: str = Form(...),  # Ввод через форму
     user: Optional[UserResponse] = Depends(get_current_user),  # Опциональная авторизация
 ) -> SLinkResponse:
     """
@@ -23,7 +24,7 @@ async def shorten_link(
     """
     try:
         # Проверяем, существует ли ссылка с таким original_url
-        existing_link = await LinkRepository.find_by_original_url(str(link_data.original_url))
+        existing_link = await LinkRepository.find_by_original_url(original_url)
         if existing_link:
             return SLinkResponse(
                 id=existing_link.id,
@@ -37,6 +38,7 @@ async def shorten_link(
 
         # Если пользователь авторизован, используем его user_id, иначе None
         user_id = user.id if user else None
+        link_data = SLinkAdd(original_url=original_url)
         link = await LinkRepository.add_one(link_data, user_id=user_id)
         return link
     except Exception as e:
