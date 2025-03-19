@@ -157,3 +157,20 @@ async def link_stats(short_code: str) -> SLinkStatsResponse:
         click_count=link.click_count,
         last_used_at=link.last_used_at,  # Предполагаем, что это поле есть в модели
     )
+
+@router.get("/search", response_model=SLinkResponse)
+async def search_link_by_original_url(
+    original_url: str,  # Параметр запроса
+    request: Request,   # Для формирования короткого URL
+):
+    """
+    Поиск ссылки по оригинальному URL.
+    Возвращает ссылку с short_code.
+    """
+    link = await LinkRepository.find_by_original_url(original_url)
+    if not link:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена")
+
+    # Обновляем short_url с учетом текущего хоста
+    link.short_url = f"{request.base_url}links/{link.short_code}"
+    return link

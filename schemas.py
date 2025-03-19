@@ -18,7 +18,7 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 class SLinkAdd(BaseModel):
-    original_url: HttpUrl  # Оригинальный URL
+    original_url: str  # Используем str вместо HttpUrl
     custom_alias: Optional[str] = Field(
         None,
         min_length=4,
@@ -40,7 +40,7 @@ class SLinkResponse(BaseModel):
     expires_at: datetime
     user_id: Optional[int]
     click_count: int
-    short_url: Optional[str]  # Делаем поле опциональным
+    short_url: Optional[str]  # Короткий URL
 
     class Config:
         from_attributes = True

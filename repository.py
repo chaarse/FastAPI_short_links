@@ -8,8 +8,15 @@ from datetime import datetime, timedelta
 from typing import Optional
 import asyncio
 import logging
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
+
+def normalize_url(url: str) -> str:
+    """
+    Нормализует URL: декодирует и приводит к нижнему регистру.
+    """
+    return unquote(url).lower().strip()
 
 class LinkRepository:
     @staticmethod
@@ -30,6 +37,9 @@ class LinkRepository:
         """
         async with new_session() as session:
             try:
+                # Нормализуем оригинальный URL
+                normalized_url = normalize_url(str(data.original_url))
+
                 # Если передан custom_alias, проверяем его уникальность
                 if data.custom_alias:
                     existing_link = await cls.find_by_short_code(data.custom_alias)
@@ -52,7 +62,7 @@ class LinkRepository:
 
                 # Создаем новую ссылку
                 link = LinkOrm(
-                    original_url=str(data.original_url),
+                    original_url=normalized_url,  # Сохраняем нормализованный URL
                     short_code=short_code,
                     user_id=user_id,  # user_id может быть None (анонимный пользователь)
                     expires_at=expires_at,  # Устанавливаем срок действия
@@ -90,14 +100,39 @@ class LinkRepository:
             return result.scalars().first()
 
     @classmethod
-    async def find_by_original_url(cls, original_url: str) -> LinkOrm:
+    async def find_by_original_url(cls, original_url: str) -> Optional[SLinkResponse]:
         """
-        Ищет ссылку по оригинальному URL.
+        Ищет ссылку по оригинальному URL и возвращает её в формате SLinkResponse.
         """
         async with new_session() as session:
-            query = select(LinkOrm).where(LinkOrm.original_url == original_url)
+            # Нормализуем URL
+            normalized_url = normalize_url(original_url)
+            logger.debug(f"Normalized URL: {normalized_url}")  # Логируем нормализованный URL
+
+            # Ищем ссылку по нормализованному URL
+            query = select(LinkOrm).where(LinkOrm.original_url == normalized_url)
             result = await session.execute(query)
-            return result.scalars().first()
+            link = result.scalars().first()
+
+            if link:
+                logger.debug(f"Found link: {link.original_url}")  # Логируем URL из базы данных
+            else:
+                logger.debug("Link not found")
+
+            if not link:
+                return None
+
+            return SLinkResponse(
+                id=link.id,
+                original_url=link.original_url,
+                short_code=link.short_code,
+                created_at=link.created_at,
+                expires_at=link.expires_at,
+                user_id=link.user_id,
+                click_count=link.click_count,
+                short_url=f"http://127.0.0.1:8000/links/{link.short_code}",  # Формируем короткий URL
+            )
+
 
     @classmethod
     async def delete_by_short_code(cls, short_code: str, user_id: int):
@@ -118,10 +153,13 @@ class LinkRepository:
         """
         async with new_session() as session:
             try:
+                # Нормализуем новый URL
+                normalized_url = normalize_url(new_url)
+
                 # Обновляем оригинальный URL
                 query = update(LinkOrm).where(
                     (LinkOrm.short_code == short_code) & (LinkOrm.user_id == user_id)
-                ).values(original_url=new_url)
+                ).values(original_url=normalized_url)  # Сохраняем нормализованный URL
                 await session.execute(query)
                 await session.commit()
 
@@ -130,6 +168,18 @@ class LinkRepository:
                 if not updated_link:
                     logger.error(f"Failed to fetch updated link: short_code={short_code}")
                     return None
+
+                return updated_link
+            except Exception as e:
+                logger.error(f"Error updating link in database: {e}")
+                await session.rollback()
+                return None
+
+                return updated_link
+            except Exception as e:
+                logger.error(f"Error updating link in database: {e}")
+                await session.rollback()
+                return None
 
                 return updated_link
             except Exception as e:
