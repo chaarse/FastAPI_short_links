@@ -18,7 +18,19 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 class SLinkAdd(BaseModel):
-    original_url: HttpUrl  # Только оригинальная ссылка
+    original_url: str  # Используем str вместо HttpUrl
+    custom_alias: Optional[str] = Field(
+        None,
+        min_length=4,
+        max_length=20,
+        pattern="^[a-zA-Z0-9_-]+$",
+        description="Пользовательский алиас для короткой ссылки. Должен быть уникальным."
+    )
+    expires_at: Optional[datetime] = Field(
+        None,
+        description="Дата и время истечения срока действия ссылки (формат: YYYY-MM-DDTHH:MM)."
+    )
+
 
 class SLinkResponse(BaseModel):
     id: int
@@ -28,7 +40,13 @@ class SLinkResponse(BaseModel):
     expires_at: datetime
     user_id: Optional[int]
     click_count: int
-    short_url: str  # Добавляем короткую ссылку
+    short_url: Optional[str]  # Короткий URL
 
     class Config:
         from_attributes = True
+
+class SLinkStatsResponse(BaseModel):
+    original_url: HttpUrl  # Оригинальный URL
+    created_at: datetime   # Дата создания
+    click_count: int       # Количество переходов
+    last_used_at: datetime

@@ -26,6 +26,7 @@ class LinkOrm(Model):
     expires_at: Mapped[datetime] = mapped_column(default=lambda: datetime.utcnow() + timedelta(days=30))
     user_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     click_count: Mapped[int] = mapped_column(default=0)
+    last_used_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)  # Новое поле
 
 async def create_tables():
     async with engine.begin() as conn:
