@@ -38,7 +38,7 @@ class SLinkResponse(BaseModel):
     short_code: str
     created_at: datetime
     expires_at: datetime
-    user_id: Optional[int]
+    user_id: Optional[int]  # ID пользователя, создавшего ссылку
     click_count: int
     short_url: Optional[str]  # Короткий URL
 

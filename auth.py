@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 # Настройки для JWT
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
 
 # Контекст для хэширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Схема OAuth2
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)  # auto_error=False позволяет не выбрасывать ошибку, если токен отсутствует
 
 SALT = os.getenv("SALT", "your_salt_here")
 
@@ -95,41 +96,28 @@ class AuthService:
         return jwt.encode(to_encode, user_secret_key, algorithm=ALGORITHM)
 
     @classmethod
-    async def get_current_user(cls, token: str = Depends(oauth2_scheme)) -> UserOrm:
-        """
-        Возвращает текущего пользователя по токену.
-        """
-        credentials_exception = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    async def get_current_user(cls, token: Optional[str] = Depends(oauth2_scheme)) -> Optional[UserResponse]:
+        if token is None:
+            return None  # Если токен отсутствует, возвращаем None
+
         try:
-            logger.debug(f"Decoding token: {token}")
-            # Декодируем payload без проверки подписи, чтобы извлечь username
-            unverified_payload = jwt.get_unverified_claims(token)
-            logger.debug(f"Decoded payload: {unverified_payload}")
-            username: str = unverified_payload.get("sub")
+            # Декодируем токен
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username: str = payload.get("sub")
             if username is None:
-                raise credentials_exception
+                return None  # Если username отсутствует, возвращаем None
 
             # Получаем пользователя из базы данных
             async with new_session() as session:
                 user = await session.execute(select(UserOrm).where(UserOrm.username == username))
                 user = user.scalar()
                 if user is None:
-                    raise credentials_exception
+                    return None  # Если пользователь не найден, возвращаем None
 
-                # Генерируем SECRET_KEY для пользователя
-                user_secret_key = generate_user_secret_key(user.username)
+                return UserResponse(id=user.id, username=user.username)
+        except JWTError:
+            return None  # Если токен невалиден, возвращаем None
 
-                # Проверяем подпись токена уже с "динамическим" SECRET_KEY
-                jwt.decode(token, user_secret_key, algorithms=[ALGORITHM])
-
-                return user
-        except JWTError as e:
-            logger.error(f"JWTError: {e}")
-            raise credentials_exception
 
 # Эндпоинты для аутентификации
 @auth_router.post("/register")
@@ -145,7 +133,6 @@ async def register(
 
 @auth_router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-
     user = await AuthService.authenticate_user(form_data.username, form_data.password)
     access_token = AuthService.create_access_token(user)
     return {"access_token": access_token, "token_type": "bearer"}

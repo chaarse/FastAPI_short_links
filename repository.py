@@ -27,8 +27,6 @@ class LinkRepository:
         chars = string.ascii_letters + string.digits  # Буквы и цифры
         return ''.join(secrets.choice(chars) for _ in range(length))
 
-    from datetime import datetime, timedelta
-
     @classmethod
     async def add_one(cls, data: SLinkAdd, user_id: Optional[int] = None) -> SLinkResponse:
         """
@@ -133,7 +131,6 @@ class LinkRepository:
                 short_url=f"http://127.0.0.1:8000/links/{link.short_code}",  # Формируем короткий URL
             )
 
-
     @classmethod
     async def delete_by_short_code(cls, short_code: str, user_id: int):
         """
@@ -168,18 +165,6 @@ class LinkRepository:
                 if not updated_link:
                     logger.error(f"Failed to fetch updated link: short_code={short_code}")
                     return None
-
-                return updated_link
-            except Exception as e:
-                logger.error(f"Error updating link in database: {e}")
-                await session.rollback()
-                return None
-
-                return updated_link
-            except Exception as e:
-                logger.error(f"Error updating link in database: {e}")
-                await session.rollback()
-                return None
 
                 return updated_link
             except Exception as e:
