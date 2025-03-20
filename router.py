@@ -174,4 +174,3 @@ async def link_stats(short_code: str) -> SLinkStatsResponse:
         click_count=link.click_count,
         last_used_at=link.last_used_at,  # Предполагаем, что это поле есть в модели
     )
-

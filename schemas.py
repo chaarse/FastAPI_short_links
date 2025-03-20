@@ -50,3 +50,8 @@ class SLinkStatsResponse(BaseModel):
     created_at: datetime   # Дата создания
     click_count: int       # Количество переходов
     last_used_at: datetime
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str

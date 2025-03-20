@@ -1,14 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Form
-from fastapi.security import OAuth2PasswordBearer
-from database import new_session, UserOrm
-from schemas import UserRegister, UserLogin, UserResponse
-from passlib.context import CryptContext
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from sqlalchemy import select
 import os
 import logging
 import hashlib
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy import select
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+
+from database import new_session, UserOrm
+from schemas import UserRegister, UserResponse, Token
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +24,18 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Схема OAuth2
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
-# Соль для генерации SECRET_KEY
 SALT = os.getenv("SALT", "your_salt_here")
 
 # Создаем роутер для аутентификации
 auth_router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
+
 def generate_user_secret_key(username: str) -> str:
-    """
-    Генерирует уникальный SECRET_KEY для пользователя на основе его username и соли.
-    """
     secret_key = hashlib.sha256(f"{username}{SALT}".encode()).hexdigest()
     return secret_key
+
 
 class AuthService:
     @classmethod
@@ -90,7 +92,6 @@ class AuthService:
             "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         }
 
-        # Генерация токена с использованием динамического SECRET_KEY
         return jwt.encode(to_encode, user_secret_key, algorithm=ALGORITHM)
 
     @classmethod
@@ -105,10 +106,10 @@ class AuthService:
         )
         try:
             logger.debug(f"Decoding token: {token}")
-            # Декодируем токен без проверки подписи, чтобы извлечь username
-            payload = jwt.decode(token, None, options={"verify_signature": False})
-            logger.debug(f"Decoded payload: {payload}")
-            username: str = payload.get("sub")
+            # Декодируем payload без проверки подписи, чтобы извлечь username
+            unverified_payload = jwt.get_unverified_claims(token)
+            logger.debug(f"Decoded payload: {unverified_payload}")
+            username: str = unverified_payload.get("sub")
             if username is None:
                 raise credentials_exception
 
@@ -122,7 +123,7 @@ class AuthService:
                 # Генерируем SECRET_KEY для пользователя
                 user_secret_key = generate_user_secret_key(user.username)
 
-                # Проверяем подпись токена с использованием динамического SECRET_KEY
+                # Проверяем подпись токена уже с "динамическим" SECRET_KEY
                 jwt.decode(token, user_secret_key, algorithms=[ALGORITHM])
 
                 return user
@@ -137,22 +138,18 @@ async def register(
     password: str = Form(...),  # Ввод через форму
 ):
     """
-    Регистрирует нового пользователя.
+    Регистрирует нового пользователя (через форму).
     """
     user_data = UserRegister(username=username, password=password)
     return await AuthService.register_user(user_data)
 
-@auth_router.post("/login")
-async def login(
-    username: str = Form(...),  # Ввод через форму
-    password: str = Form(...),  # Ввод через форму
-):
-    """
-    Аутентифицирует пользователя и возвращает токен.
-    """
-    user = await AuthService.authenticate_user(username, password)
+@auth_router.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+
+    user = await AuthService.authenticate_user(form_data.username, form_data.password)
     access_token = AuthService.create_access_token(user)
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 # Экспортируем функцию для использования в других модулях
 get_current_user = AuthService.get_current_user
