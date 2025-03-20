@@ -33,20 +33,28 @@ app.include_router(auth_router)
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
+
     openapi_schema = get_openapi(
         title="URL Shortener API",
         version="1.0.0",
         description="API для сокращения ссылок",
         routes=app.routes,
     )
+
     openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
+        "OAuth2PasswordBearer": {
+            "type": "oauth2",
+            "flows": {
+                "password": {
+                    "tokenUrl": "/auth/token",
+                    "scopes": {}
+                }
+            }
         }
     }
-    openapi_schema["security"] = [{"BearerAuth": []}]
+
+    openapi_schema["security"] = [{"OAuth2PasswordBearer": []}]
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
