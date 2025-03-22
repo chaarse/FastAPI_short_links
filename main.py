@@ -9,10 +9,8 @@ from repository import delete_expired_links
 import asyncio
 import logging
 
-
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,11 +25,9 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Выключение")
 
-
 app = FastAPI(lifespan=lifespan)
 app.include_router(links_router)
 app.include_router(auth_router)
-
 
 def custom_openapi():
     if app.openapi_schema:

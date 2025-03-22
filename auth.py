@@ -1,40 +1,34 @@
 import os
 import logging
 import hashlib
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status, Form
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from passlib.context import CryptContext
-from jose import JWTError, jwt
 
-from database import new_session, UserOrm
-from schemas import UserRegister, UserResponse, Token
-from fastapi import HTTPException
+from database import new_session, UserOrm, LinkOrm
+from schemas import UserRegister, UserResponse
 
 logger = logging.getLogger(__name__)
-
-# Настройки для JWT
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
 
 # Контекст для хэширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Схема OAuth2
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)  # auto_error=False позволяет не выбрасывать ошибку, если токен отсутствует
+# Схема OAuth2 (без токенов, просто для совместимости)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
-SALT = os.getenv("SALT", "your_salt_here")
+# Хранилище авторизованных пользователей (в памяти)
+active_users: Dict[str, UserResponse] = {}
 
 # Создаем роутер для аутентификации
 auth_router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
 
 def generate_user_secret_key(username: str) -> str:
-    secret_key = hashlib.sha256(f"{username}{SALT}".encode()).hexdigest()
+    secret_key = hashlib.sha256(username.encode()).hexdigest()
     return secret_key
 
 
@@ -80,43 +74,45 @@ class AuthService:
             return user
 
     @classmethod
-    def create_access_token(cls, user: UserOrm) -> str:
+    async def get_current_user(cls, token: Optional[str] = Depends(oauth2_scheme)) -> Optional[UserResponse]:
         """
-        Создает JWT токен для конкретного пользователя.
+        Получает текущего пользователя из хранилища активных пользователей.
         """
-        # Генерируем уникальный SECRET_KEY для пользователя
-        user_secret_key = generate_user_secret_key(user.username)
+        if token is None:
+            logger.debug("Токен отсутствует")
+            return None
 
-        # Данные для токена
-        to_encode = {
-            "sub": user.username,  # Уникальный идентификатор пользователя
-            "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        }
+        # Ищем пользователя в хранилище активных пользователей
+        user = active_users.get(token)
+        if user is None:
+            logger.debug(f"Пользователь с токеном {token} не найден")
+            return None
 
-        return jwt.encode(to_encode, user_secret_key, algorithm=ALGORITHM)
+        logger.debug(f"Пользователь {user.username} успешно авторизован")
+        return user
 
     @classmethod
-    async def get_current_user(cls, token: Optional[str] = Depends(oauth2_scheme)) -> Optional[UserResponse]:
-        if token is None:
-            return None  # Если токен отсутствует, возвращаем None
+    async def update_user_id_for_links(cls, username: str, user_id: int):
+        """
+        Обновляет user_id для всех ссылок, созданных до авторизации.
+        """
+        async with new_session() as session:
+            try:
+                # Находим все ссылки, созданные до авторизации (user_id = NULL)
+                query = select(LinkOrm).where(LinkOrm.user_id.is_(None))
+                result = await session.execute(query)
+                links = result.scalars().all()
 
-        try:
-            # Декодируем токен
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            username: str = payload.get("sub")
-            if username is None:
-                return None  # Если username отсутствует, возвращаем None
+                # Обновляем user_id для найденных ссылок
+                for link in links:
+                    link.user_id = user_id
 
-            # Получаем пользователя из базы данных
-            async with new_session() as session:
-                user = await session.execute(select(UserOrm).where(UserOrm.username == username))
-                user = user.scalar()
-                if user is None:
-                    return None  # Если пользователь не найден, возвращаем None
-
-                return UserResponse(id=user.id, username=user.username)
-        except JWTError:
-            return None  # Если токен невалиден, возвращаем None
+                await session.commit()
+                logger.info(f"Updated user_id for {len(links)} links")
+            except Exception as e:
+                logger.error(f"Error updating user_id for links: {e}")
+                await session.rollback()
+                raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 # Эндпоинты для аутентификации
@@ -131,11 +127,28 @@ async def register(
     user_data = UserRegister(username=username, password=password)
     return await AuthService.register_user(user_data)
 
-@auth_router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = await AuthService.authenticate_user(form_data.username, form_data.password)
-    access_token = AuthService.create_access_token(user)
-    return {"access_token": access_token, "token_type": "bearer"}
+@auth_router.post("/token")
+async def login_for_access_token(
+    username: str = Form(...),  # Ввод через форму
+    password: str = Form(...),  # Ввод через форму
+):
+    """
+    Аутентифицирует пользователя и возвращает токен (просто строку).
+    Также обновляет user_id для всех ссылок, созданных до авторизации.
+    """
+    user = await AuthService.authenticate_user(username, password)
+    user_response = UserResponse(id=user.id, username=user.username)
+
+    # Генерируем "токен" (просто хэш имени пользователя)
+    token = generate_user_secret_key(username)
+
+    # Сохраняем пользователя в хранилище активных пользователей
+    active_users[token] = user_response
+
+    # Обновляем user_id для всех ссылок, созданных до авторизации
+    await AuthService.update_user_id_for_links(username, user.id)
+
+    return {"access_token": token, "token_type": "bearer"}
 
 
 # Экспортируем функцию для использования в других модулях

@@ -14,7 +14,6 @@ router = APIRouter(
     tags=["Ссылки"],
 )
 
-
 @router.get("/search", response_model=SLinkResponse)
 async def search_link_by_original_url(
     original_url: str,  # Параметр запроса
@@ -31,7 +30,6 @@ async def search_link_by_original_url(
     # Обновляем short_url с учетом текущего хоста
     link.short_url = f"{request.base_url}links/{link.short_code}"
     return link
-
 
 @router.post("/shorten", response_model=SLinkResponse)
 async def shorten_link(
@@ -66,7 +64,6 @@ async def shorten_link(
         logger.error(f"Error creating link: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
 @router.get("/{short_code}")
 async def redirect_link(short_code: str):
     """
@@ -78,7 +75,6 @@ async def redirect_link(short_code: str):
 
     await LinkRepository.increment_click_count(link.id)
     return RedirectResponse(url=link.original_url)
-
 
 @router.delete("/{short_code}")
 async def delete_link(
@@ -101,7 +97,6 @@ async def delete_link(
 
     await LinkRepository.delete_by_short_code(short_code, user.id)
     return {"ok": True}
-
 
 @router.put("/{short_code}", response_model=SLinkResponse)
 async def update_link(
@@ -137,7 +132,6 @@ async def update_link(
         click_count=updated_link.click_count,
         short_url=None,  # Поле short_url не используется в этой ручке
     )
-
 
 @router.get("/{short_code}/stats", response_model=SLinkStatsResponse)
 async def link_stats(short_code: str) -> SLinkStatsResponse:
