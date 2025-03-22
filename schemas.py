@@ -31,14 +31,13 @@ class SLinkAdd(BaseModel):
         description="Дата и время истечения срока действия ссылки (формат: YYYY-MM-DDTHH:MM)."
     )
 
-
 class SLinkResponse(BaseModel):
     id: int
     original_url: HttpUrl
     short_code: str
     created_at: datetime
     expires_at: datetime
-    user_id: Optional[int]
+    user_id: Optional[int]  # ID пользователя, создавшего ссылку
     click_count: int
     short_url: Optional[str]  # Короткий URL
 
@@ -50,7 +49,6 @@ class SLinkStatsResponse(BaseModel):
     created_at: datetime   # Дата создания
     click_count: int       # Количество переходов
     last_used_at: datetime
-
 
 class Token(BaseModel):
     access_token: str

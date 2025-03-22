@@ -26,7 +26,6 @@ async def lifespan(app: FastAPI):
     logger.info("Выключение")
 
 app = FastAPI(lifespan=lifespan)
-
 app.include_router(links_router)
 app.include_router(auth_router)
 
