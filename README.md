@@ -35,6 +35,7 @@
 * *short_code* - alias ссылки
 
 **Ответ**:
+
 ![изображение](https://github.com/user-attachments/assets/231259ae-f39f-4d61-ac91-701824949c1a)
 ---
 
