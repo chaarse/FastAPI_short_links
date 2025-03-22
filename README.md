@@ -1,6 +1,8 @@
 # API-сервис сокращения ссылок
 Сервис позволяет пользователям сокращать длинные ссылки, получать их аналитику и управлять ими. Пользователь вводит длинный URL, сервис генерирует для него короткую ссылку, которую можно использовать для быстрого доступа.
 
+Swagger UI: https://fastapi-short-links.onrender.com/docs 
+
 
 ## Описание API
 Изменение и удаление ссылки доступно только зарегистрированным пользователям, *GET / POST* - всем.  
@@ -168,4 +170,53 @@
 
 
 ## Инструкцию по запуску
+#### Создание репозитория
+```
+git init
+git remote add origin git@github.com:<никнейм>/<названиеРепозитория>.git
+.... add gitignore
+git add .
+git commit -m "..."
+git branch -M main
+git push -u origin main
+```
 
+
+#### Подготовка сервера
+git
+```
+sudo apt-get update
+sudo apt-get install git
+```
+[docker](https://docs.docker.com/engine/install/ubuntu/)
+```
+sudo apt-get update
+sudo apt-get install ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+
+#### Запуск приложения
+Перейдите в корневую директорию вашего проекта (где находится Dockerfile). Соберите Docker-образ:
+```
+docker build . --tag fastapi_app
+```
+Запустите контейнер:
+```
+docker run -p 80:80 fastapi_app
+```
+`-p 80:80` — связывает порт 80 на вашем компьютере с портом 80 внутри контейнера.
+
+
+#### Деплой на Render.com
+[Документация](https://render.com/docs)
