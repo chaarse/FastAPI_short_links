@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from contextlib import asynccontextmanager
 from database import create_tables, delete_tables
 from router import router as links_router
 from auth import auth_router
@@ -12,6 +11,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await delete_tables()
@@ -19,7 +19,6 @@ async def lifespan(app: FastAPI):
     await create_tables()
     logger.info("База готова к работе")
 
-    # Запускаем фоновую задачу
     asyncio.create_task(delete_expired_links())
 
     yield
@@ -28,6 +27,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(links_router)
 app.include_router(auth_router)
+
 
 def custom_openapi():
     if app.openapi_schema:

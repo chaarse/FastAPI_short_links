@@ -1,30 +1,23 @@
-import os
 import logging
 import hashlib
-from datetime import datetime
 from typing import Optional, Dict
-
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from passlib.context import CryptContext
-
 from database import new_session, UserOrm, LinkOrm
 from schemas import UserRegister, UserResponse
 
 logger = logging.getLogger(__name__)
 
-# Контекст для хэширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Схема OAuth2 (без токенов, просто для совместимости)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
-# Хранилище авторизованных пользователей (в памяти)
 active_users: Dict[str, UserResponse] = {}
 
-# Создаем роутер для аутентификации
-auth_router = APIRouter(prefix="/auth", tags=["Аутентификация"])
+auth_router = APIRouter(prefix="/auth",
+                        tags=["Аутентификация"])
 
 
 def generate_user_secret_key(username: str) -> str:
@@ -36,19 +29,16 @@ class AuthService:
     @classmethod
     async def register_user(cls, user_data: UserRegister) -> UserResponse:
         """
-        Регистрирует нового пользователя.
+        Регистрация пользователя.
         """
         async with new_session() as session:
             try:
-                # Проверяем, существует ли пользователь
                 existing_user = await session.execute(select(UserOrm).where(UserOrm.username == user_data.username))
                 if existing_user.scalar():
                     raise HTTPException(status_code=400, detail="Username already exists")
 
-                # Хэшируем пароль
                 hashed_password = pwd_context.hash(user_data.password)
 
-                # Создаем нового пользователя
                 user = UserOrm(username=user_data.username, password_hash=hashed_password)
                 session.add(user)
                 await session.flush()
@@ -61,10 +51,11 @@ class AuthService:
                 await session.rollback()
                 raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
     @classmethod
     async def authenticate_user(cls, username: str, password: str) -> UserOrm:
         """
-        Аутентифицирует пользователя.
+        Аутентификация пользователя.
         """
         async with new_session() as session:
             user = await session.execute(select(UserOrm).where(UserOrm.username == username))
@@ -73,16 +64,14 @@ class AuthService:
                 raise HTTPException(status_code=401, detail="Invalid username or password")
             return user
 
+
     @classmethod
     async def get_current_user(cls, token: Optional[str] = Depends(oauth2_scheme)) -> Optional[UserResponse]:
-        """
-        Получает текущего пользователя из хранилища активных пользователей.
-        """
+
         if token is None:
             logger.debug("Токен отсутствует")
             return None
 
-        # Ищем пользователя в хранилище активных пользователей
         user = active_users.get(token)
         if user is None:
             logger.debug(f"Пользователь с токеном {token} не найден")
@@ -91,19 +80,18 @@ class AuthService:
         logger.debug(f"Пользователь {user.username} успешно авторизован")
         return user
 
+
     @classmethod
     async def update_user_id_for_links(cls, username: str, user_id: int):
         """
-        Обновляет user_id для всех ссылок, созданных до авторизации.
+        Обновление user_id для всех ссылок, созданных до авторизации.
         """
         async with new_session() as session:
             try:
-                # Находим все ссылки, созданные до авторизации (user_id = NULL)
                 query = select(LinkOrm).where(LinkOrm.user_id.is_(None))
                 result = await session.execute(query)
                 links = result.scalars().all()
 
-                # Обновляем user_id для найденных ссылок
                 for link in links:
                     link.user_id = user_id
 
@@ -115,41 +103,32 @@ class AuthService:
                 raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-# Эндпоинты для аутентификации
 @auth_router.post("/register")
 async def register(
-    username: str = Form(...),  # Ввод через форму
-    password: str = Form(...),  # Ввод через форму
+    username: str = Form(...),
+    password: str = Form(...),
 ):
-    """
-    Регистрирует нового пользователя (через форму).
-    """
+
     user_data = UserRegister(username=username, password=password)
     return await AuthService.register_user(user_data)
 
+
 @auth_router.post("/token")
 async def login_for_access_token(
-    username: str = Form(...),  # Ввод через форму
-    password: str = Form(...),  # Ввод через форму
+    username: str = Form(...),
+    password: str = Form(...),
 ):
-    """
-    Аутентифицирует пользователя и возвращает токен (просто строку).
-    Также обновляет user_id для всех ссылок, созданных до авторизации.
-    """
+
     user = await AuthService.authenticate_user(username, password)
     user_response = UserResponse(id=user.id, username=user.username)
 
-    # Генерируем "токен" (просто хэш имени пользователя)
     token = generate_user_secret_key(username)
 
-    # Сохраняем пользователя в хранилище активных пользователей
     active_users[token] = user_response
 
-    # Обновляем user_id для всех ссылок, созданных до авторизации
     await AuthService.update_user_id_for_links(username, user.id)
 
     return {"access_token": token, "token_type": "bearer"}
 
 
-# Экспортируем функцию для использования в других модулях
 get_current_user = AuthService.get_current_user
